@@ -193,6 +193,49 @@ namespace kelo
         time_last_ramping = now;
     }
 
+    void VelocityPlatformController::calculateWheelTargetTorques(
+            double *wheel_torques,
+            double *pivot_angles)
+    {
+        // TODO: pass wheel coordinates; pivot_deviations;
+        const unsigned int N = 3;
+        const unsigned int M = 8;
+        bool debug = false;
+        
+        gsl_matrix *A = gsl_matrix_alloc(N, M);
+        gsl_matrix *A_inv_T = gsl_matrix_alloc(M, N);
+        gsl_matrix *A_tmp = gsl_matrix_alloc(N, M);
+        gsl_matrix *A_inv_T_tmp = gsl_matrix_alloc(M, N);
+        gsl_vector *work = gsl_vector_alloc(N);
+        gsl_matrix *W = gsl_matrix_alloc(N, N); 
+        gsl_matrix *K = gsl_matrix_alloc(M, M); 
+        gsl_vector *u = gsl_vector_alloc(N);
+        gsl_matrix *V = gsl_matrix_alloc(N, N);
+        gsl_matrix *u_inv = gsl_matrix_alloc(N, N);
+        gsl_matrix *b = gsl_matrix_alloc(N, 1);
+        gsl_matrix *b_verify = gsl_matrix_alloc(N, 1);      
+
+        // TODO: Calculate wheel target torques
+        functions_main(wheel_torques,
+                       pivot_angles,
+                       b,
+                       b_verify,
+                       A,
+                       A_inv_T,
+                       A_tmp,
+                       A_inv_T_tmp,
+                       work,
+                       W,
+                       K,
+                       u,
+                       V,
+                       u_inv,
+                       M,
+                       N,
+                       debug);
+    }
+
+
     void VelocityPlatformController::calculateWheelTargetVelocity(
             const size_t &wheel_index,
             const float &raw_pivot_angle,

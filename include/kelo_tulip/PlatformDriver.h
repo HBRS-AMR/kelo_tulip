@@ -218,6 +218,8 @@ protected:
 
 	double wheelsetpointmin;
 	double wheelsetpointmax;
+	double torque_wheelsetpointmin;
+	double torque_wheelsetpointmax;
 
 	volatile bool statusError;
 	volatile bool slipError;
