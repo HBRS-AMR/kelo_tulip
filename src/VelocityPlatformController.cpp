@@ -233,6 +233,7 @@ namespace kelo
                        M,
                        N,
                        debug);
+        std::cout << "inside calculateWheelTargetTorques" << std::endl;
     }
 
 

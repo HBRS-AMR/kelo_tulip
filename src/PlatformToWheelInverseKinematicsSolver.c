@@ -50,7 +50,7 @@ void functions_main(double *wheel_torques,
      * https://github.com/kelo-robotics/kelo_tulip/blob/master/src/PlatformDriver.cpp
      *
      */
-
+    printf("\ninside functions_main\n");
     double radius = 0.052;            // (0.105/2) [m]
     // double radius = 0.0575;               // 0.115 [m]
 
