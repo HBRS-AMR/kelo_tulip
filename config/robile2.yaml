@@ -7,7 +7,7 @@ wheel0:
   ethercat_number: 5
   x: 0.233
   y: 0.1165
-  a: 1.615
+  a: 2.335
   reverse_velocity: 1
   critical: 0
 
@@ -15,5 +15,5 @@ wheel1:
   ethercat_number: 3
   x: 0.233
   y: -0.1165
-  a: 2.335
+  a: 1.615
   reverse_velocity: 1
