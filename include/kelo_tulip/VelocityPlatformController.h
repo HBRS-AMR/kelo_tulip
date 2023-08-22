@@ -85,7 +85,19 @@ namespace kelo
             void calculatePlatformRampedVelocities();
 
             void calculateWheelTargetTorques(double *wheel_torques,
-                                             double *pivot_angles);
+                                            double *pivot_angles,
+                                            double *wheel_coordinates,
+                                            double *pivot_angles_deviation,
+                                            double *measured_platform_velocity,
+                                            double *platform_damping_parameters,
+                                            const gsl_matrix *K,
+                                            const gsl_matrix *W,
+                                            const unsigned int M,
+                                            const unsigned int N);
+
+            void getPivotError(const size_t &wheel_index,
+                                const float &raw_pivot_angle,
+                                float &pivot_error);
 
             void calculateWheelTargetVelocity(const size_t &wheel_index,
                                               const float &pivot_angle,

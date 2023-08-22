@@ -5,6 +5,10 @@ va_max: 1.0
 
 device: eno1
 
+platform_Kd_x: 100.0
+platform_Kd_y: 100.0
+platform_Kd_a: 40.0
+
 wheel0:
   ethercat_number: 2
   x: 0.188

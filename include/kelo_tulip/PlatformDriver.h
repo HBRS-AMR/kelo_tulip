@@ -109,7 +109,8 @@ public:
 	void setProcessData(int slave, rxpdo1_t* data);
 
 	void setTargetVelocity(double vx, double vy, double va);
-
+	void setMeasuredVelocity(double &vx, double &vy, double &va);
+	void setPlatformDampingParameters(double *damping_parameters);
 	void setWheelDistance(double x);
 	void setWheelDiameter(double x);
 	void setCurrentStop(double x);
@@ -209,6 +210,9 @@ protected:
 	double currentCalibration;
 	double currentStop;
 	double currentDrive;
+
+	double measured_platform_velocity[3];
+	double platform_damping_parameters[3];
 
 	double maxvlin;
 	double maxva;

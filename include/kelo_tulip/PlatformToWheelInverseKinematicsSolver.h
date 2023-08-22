@@ -37,6 +37,8 @@
  */
 void functions_main(double *wheel_torques,
                     double *pivot_angles,
+                    double *wheel_coordinates,
+                    double *pivot_angles_deviation,
                     const gsl_matrix *b,
                     gsl_matrix *b_verify,
                     gsl_matrix *A,

@@ -97,8 +97,8 @@ PlatformDriver::PlatformDriver(std::string device, std::vector<EtherCATModule*> 
 	wheelsetpointmin = 0.01;
 	wheelsetpointmax = 35.0;
 
-	torque_wheelsetpointmin = 0.1;
-	torque_wheelsetpointmax = 20.0; // TODO: Check 
+	torque_wheelsetpointmin = 0.01;
+	torque_wheelsetpointmax = 3.0; 
 	EcatError = FALSE;
 	current_ts = 0;
 	swErrorCount = 0;
@@ -150,6 +150,19 @@ PlatformDriver::PlatformDriver(const PlatformDriver&) {
 void PlatformDriver::setTargetVelocity(double vx, double vy, double va) {
 
     velocityPlatformController.setPlatformTargetVelocity(vx, vy, va);
+}
+
+void PlatformDriver::setMeasuredVelocity(double &vx, double &vy, double &va) {
+	measured_platform_velocity[0] = vx;
+	measured_platform_velocity[1] = vy;
+	measured_platform_velocity[2] = va;
+}
+
+void PlatformDriver::setPlatformDampingParameters(double *damping_parameters) {
+	
+    for (size_t i = 0; i < 3; ++i) {
+        platform_damping_parameters[i] = damping_parameters[i];
+    }	
 }
 
 void PlatformDriver::setWheelDistance(double x) {
@@ -437,10 +450,10 @@ void PlatformDriver::ethercatHandler() {
 		wkc = ecx_receive_processdata(&ecx_context, ethercatTimeout);
 
 		// TODO fix
-static int expectedWkc = 0;
-static int lastWkc = 0;
-//if (step < 10)
-//	std::cout << "wkc=" << wkc << std::endl;
+		static int expectedWkc = 0;
+		static int lastWkc = 0;
+		//if (step < 10)
+		//	std::cout << "wkc=" << wkc << std::endl;
 
 		if (wkc != lastWkc) {
 			std::cout << "Smartwheel WKC changed from " << lastWkc << " to " << wkc << std::endl;
@@ -728,7 +741,7 @@ void PlatformDriver::doStop() {
 void PlatformDriver::doControl() {
     // ASSUMPTION: firstWheel == 0 (TODO: discuss with Walter Nowak)
     assert ( firstWheel == 0 );
-	double motor_const = 0.29; //units: (Newton-meter/Ampere)
+	double motor_const = 0.29; //units: (Ampere/Newton-meter)
 
     /* initialise struct to be sent to wheels */
 	rxpdo1_t rxdata;
@@ -744,23 +757,64 @@ void PlatformDriver::doControl() {
 	// update desired velocity of platform, based on target velocity and veloity ramps
 	velocityPlatformController.calculatePlatformRampedVelocities();
 	
-    double wheel_torques[8];
-	double pivot_angles[4];
+    const unsigned int N = 3;
+    const unsigned int M = nWheels * 2;
+    double wheel_torques[M];
+	double pivot_angles[nWheels];
+	double wheel_coordinates[M];
+	double pivot_angles_deviation[nWheels];		
 
 	for (unsigned int i = 0; i < nWheels; i++) {
 		txpdo1_t* ecData = (txpdo1_t*) ecx_slave[(*wheelConfigs)[i].ethercatNumber].inputs;
 		pivot_angles[i] = ecData->encoder_pivot;
+		wheel_coordinates[2*i] = (*wheelConfigs)[i].x;
+		wheel_coordinates[2*i + 1] = (*wheelConfigs)[i].y;
+		pivot_angles_deviation[i] = (*wheelConfigs)[i].a;
 	}
 
-	/* calculate wheel target torques */
-	velocityPlatformController.calculateWheelTargetTorques(wheel_torques, pivot_angles);
+    gsl_matrix *W = gsl_matrix_alloc(N, N); 
+    gsl_matrix *K = gsl_matrix_alloc(M, M); 
 
+	// setting the weights
+    size_t i;
+    for (i = 0; i < M; i++)
+    {
+
+        gsl_matrix_set(K, i, i, 1.0);
+        if (i < N)
+        {
+            gsl_matrix_set(W, i, i, 1.0);
+        }
+    }
+
+	/* calculate wheel target torques based on the desired velocity*/
+	velocityPlatformController.calculateWheelTargetTorques(wheel_torques, 
+														   pivot_angles,
+														   wheel_coordinates,
+														   pivot_angles_deviation,
+														   measured_platform_velocity,
+														   platform_damping_parameters,
+														   K,
+														   W,
+														   M,
+														   N);
+
+	// releasing memory
+	gsl_matrix_free(W);
+	gsl_matrix_free(K);
+	
 	for (size_t i = firstWheel; i < firstWheel + nWheels; i++) {
 		txpdo1_t* wheel_data = getProcessData((*wheelConfigs)[i].ethercatNumber);
 
-		float setpoint1, setpoint2;
+		float setpoint1 = 0.0;
+		float setpoint2 = 0.0;
+		float pivot_error = 0.0;
+		double motor_torque_value = 1.3; // Nm/A
+		double error_margin = 0.25;      // allowed pivot_error
 		setpoint1 = - wheel_torques[2 * i]; // because of inverted frame
 		setpoint2 = wheel_torques[2 * i + 1]; 
+
+		velocityPlatformController.getPivotError(i, wheel_data->encoder_pivot, pivot_error);
 
         /* avoid sending close to zero values */
         if ( fabs(setpoint1) < torque_wheelsetpointmin )
@@ -775,6 +829,20 @@ void PlatformDriver::doControl() {
         /* avoid sending very large values */
         setpoint1 = Utils::clip(setpoint1, torque_wheelsetpointmax, -torque_wheelsetpointmax);
         setpoint2 = Utils::clip(setpoint2, torque_wheelsetpointmax, -torque_wheelsetpointmax);
+
+		if (pivot_error < -error_margin)
+		{
+			// rotate anti-clockwise
+			setpoint1 += motor_torque_value;
+			setpoint2 += motor_torque_value;
+
+		}
+		else if (pivot_error > error_margin)
+		{
+			// rotate clockwise
+			setpoint1 -= motor_torque_value;
+			setpoint2 -= motor_torque_value;			
+		}
 
         /* send calculated current values to EtherCAT */
 		rxdata.setpoint1 = setpoint1 / motor_const;

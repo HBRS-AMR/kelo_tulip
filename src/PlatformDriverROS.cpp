@@ -386,6 +386,7 @@ void publishAll(const ros::TimerEvent&) {
 		//calculate robot velocity
 		double vx, vy, va, encDisplacement;
 		calculateRobotVelocity(vx, vy, va, encDisplacement);
+		driver->setMeasuredVelocity(vx, vy, va);
 
 		//calculate robot displacement and current pose
 		calculateRobotPose(vx, vy, va);
@@ -513,6 +514,13 @@ int main (int argc, char** argv)
 
 	double delayRetry = 0;
 	nh.getParam("start_retry_delay", delayRetry);
+
+	//set platform damping values
+	double damping_parameters[3];
+	nh.getParam("platform_Kd_x", damping_parameters[0]);
+	nh.getParam("platform_Kd_y", damping_parameters[1]);
+	nh.getParam("platform_Kd_a", damping_parameters[2]);
+	driver->setPlatformDampingParameters(damping_parameters);
 		
 	// initialize Ethercat
 	while (!driver->initEthercat()) {
