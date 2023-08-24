@@ -165,6 +165,10 @@ void PlatformDriver::setPlatformDampingParameters(double *damping_parameters) {
     }	
 }
 
+void PlatformDriver::setControlMode(std::string &base_control_mode) {
+	platform_control_mode = base_control_mode;
+}
+
 void PlatformDriver::setWheelDistance(double x) {
 	wheelDistance = x;
 }
@@ -722,15 +726,27 @@ void PlatformDriver::updateEncoders() {
 }
 
 void PlatformDriver::doStop() {
+
 	rxpdo1_t rxdata;
 	rxdata.timestamp = current_ts + 100 * 1000; // TODO
-	rxdata.command1 = COM1_ENABLE1 | COM1_ENABLE2 | COM1_MODE_TORQUE;
-	rxdata.limit1_p = 0.0;
-	rxdata.limit1_n = 0.0;
-	rxdata.limit2_p = 0.0;
-	rxdata.limit2_n = 0.0;
+	if (platform_control_mode == "TORQUE_CONTROL")	
+	{
+		rxdata.command1 = COM1_ENABLE1 | COM1_ENABLE2 | COM1_MODE_TORQUE;
+		rxdata.limit1_p = 0.0;
+		rxdata.limit1_n = 0.0;
+		rxdata.limit2_p = 0.0;
+		rxdata.limit2_n = 0.0;
+	}
+	else
+	{
+		rxdata.command1 = COM1_ENABLE1 | COM1_ENABLE2 | COM1_MODE_VELOCITY;
+		rxdata.limit1_p = currentStop;
+		rxdata.limit1_n = -currentStop;
+		rxdata.limit2_p = currentStop;
+		rxdata.limit2_n = -currentStop;		
+	}
 	rxdata.setpoint1 = 0;
-	rxdata.setpoint2 = 0;
+	rxdata.setpoint2 = 0;	
 
 	for (unsigned int i = 0; i < nWheels; i++) {
 		rxpdo1_t* ecData = (rxpdo1_t*) ecx_slave[(*wheelConfigs)[i].ethercatNumber].outputs;
@@ -742,24 +758,35 @@ void PlatformDriver::doControl() {
     // ASSUMPTION: firstWheel == 0 (TODO: discuss with Walter Nowak)
     assert ( firstWheel == 0 );
 	double motor_const = 0.29; //units: (Ampere/Newton-meter)
-
-    /* initialise struct to be sent to wheels */
 	rxpdo1_t rxdata;
-	rxdata.timestamp = current_ts + 100 * 1000; // TODO
-	rxdata.command1 = COM1_ENABLE1 | COM1_ENABLE2 | COM1_MODE_TORQUE;
-	rxdata.limit1_p = 3;
-	rxdata.limit1_n = -3;
-	rxdata.limit2_p = 3;
-	rxdata.limit2_n = -3;
 	rxdata.setpoint1 = 0;
 	rxdata.setpoint2 = 0;
+	if (platform_control_mode == "TORQUE_CONTROL")
+	{
+		/* initialise struct to be sent to wheels */
+		rxdata.timestamp = current_ts + 100 * 1000; // TODO
+		rxdata.command1 = COM1_ENABLE1 | COM1_ENABLE2 | COM1_MODE_TORQUE;
+		rxdata.limit1_p = 3;
+		rxdata.limit1_n = -3;
+		rxdata.limit2_p = 3;
+		rxdata.limit2_n = -3;
+	}
+	else
+	{
+		rxdata.timestamp = current_ts + 100 * 1000; // TODO
+		rxdata.command1 = COM1_ENABLE1 | COM1_ENABLE2 | COM1_MODE_VELOCITY;
+		rxdata.limit1_p = currentDrive;
+		rxdata.limit1_n = -currentDrive;
+		rxdata.limit2_p = currentDrive;
+		rxdata.limit2_n = -currentDrive;		
+	}
 
 	// update desired velocity of platform, based on target velocity and veloity ramps
 	velocityPlatformController.calculatePlatformRampedVelocities();
 	
-    const unsigned int N = 3;
-    const unsigned int M = nWheels * 2;
-    double wheel_torques[M];
+	const unsigned int N = 3;
+	const unsigned int M = nWheels * 2;
+	double wheel_torques[M];
 	double pivot_angles[nWheels];
 	double wheel_coordinates[M];
 	double pivot_angles_deviation[nWheels];		
@@ -772,81 +799,125 @@ void PlatformDriver::doControl() {
 		pivot_angles_deviation[i] = (*wheelConfigs)[i].a;
 	}
 
-    gsl_matrix *W = gsl_matrix_alloc(N, N); 
-    gsl_matrix *K = gsl_matrix_alloc(M, M); 
+	if (platform_control_mode == "TORQUE_CONTROL")
+	{	
 
-	// setting the weights
-    size_t i;
-    for (i = 0; i < M; i++)
-    {
+		gsl_matrix *W = gsl_matrix_alloc(N, N); 
+		gsl_matrix *K = gsl_matrix_alloc(M, M); 
 
-        gsl_matrix_set(K, i, i, 1.0);
-        if (i < N)
-        {
-            gsl_matrix_set(W, i, i, 1.0);
-        }
-    }
+		// setting the weights
+		size_t i;
+		for (i = 0; i < M; i++)
+		{
+			gsl_matrix_set(K, i, i, 1.0);
+			/* To deactivate some of the wheels, setting weights to zero */
+			// if (i == 0 || i == 1 || i == 4 || i == 5)
+			// {
+			// 	gsl_matrix_set(K, i, i, 1.0);
+			// }
+			// else
+			// {
+			// 	gsl_matrix_set(K, i, i, 0.0);
+			// }
+			if (i < N)
+			{
+				gsl_matrix_set(W, i, i, 1.0);
+			}
+		}
 
-	/* calculate wheel target torques based on the desired velocity*/
-	velocityPlatformController.calculateWheelTargetTorques(wheel_torques, 
-														   pivot_angles,
-														   wheel_coordinates,
-														   pivot_angles_deviation,
-														   measured_platform_velocity,
-														   platform_damping_parameters,
-														   K,
-														   W,
-														   M,
-														   N);
+		/* calculate wheel target torques based on the desired velocity*/
+		velocityPlatformController.calculateWheelTargetTorques(wheel_torques, 
+															pivot_angles,
+															wheel_coordinates,
+															pivot_angles_deviation,
+															measured_platform_velocity,
+															platform_damping_parameters,
+															K,
+															W,
+															M,
+															N);
 
-	// releasing memory
-	gsl_matrix_free(W);
-	gsl_matrix_free(K);
+		// releasing memory
+		gsl_matrix_free(W);
+		gsl_matrix_free(K);
+	}
 	
 	for (size_t i = firstWheel; i < firstWheel + nWheels; i++) {
 		txpdo1_t* wheel_data = getProcessData((*wheelConfigs)[i].ethercatNumber);
 
 		float setpoint1 = 0.0;
 		float setpoint2 = 0.0;
-		float pivot_error = 0.0;
-		double motor_torque_value = 1.3; // Nm/A
-		double error_margin = 0.25;      // allowed pivot_error
-		setpoint1 = - wheel_torques[2 * i]; // because of inverted frame
-		setpoint2 = wheel_torques[2 * i + 1]; 
-
-		velocityPlatformController.getPivotError(i, wheel_data->encoder_pivot, pivot_error);
-
-        /* avoid sending close to zero values */
-        if ( fabs(setpoint1) < torque_wheelsetpointmin )
-        {
-            setpoint1 = 0;
-        }
-        if ( fabs(setpoint2) < torque_wheelsetpointmin )
-        {
-            setpoint2 = 0;
-        }
-
-        /* avoid sending very large values */
-        setpoint1 = Utils::clip(setpoint1, torque_wheelsetpointmax, -torque_wheelsetpointmax);
-        setpoint2 = Utils::clip(setpoint2, torque_wheelsetpointmax, -torque_wheelsetpointmax);
-
-		if (pivot_error < -error_margin)
+		if (platform_control_mode == "TORQUE_CONTROL")
 		{
-			// rotate anti-clockwise
-			setpoint1 += motor_torque_value;
-			setpoint2 += motor_torque_value;
+			// std::cout << "Entered TCM" << std::endl;
+			float pivot_error = 0.0;
+			double motor_torque_to_align_wheels = 1.3; // Nm/A
+			double error_margin = 0.25;      // allowed pivot_error
+			setpoint1 = - wheel_torques[2 * i]; // because of inverted frame
+			setpoint2 = wheel_torques[2 * i + 1]; 
 
+			velocityPlatformController.getPivotError(i, wheel_data->encoder_pivot, pivot_error);
+
+			/* avoid sending close to zero values */
+			if ( fabs(setpoint1) < torque_wheelsetpointmin )
+			{
+				setpoint1 = 0;
+			}
+			if ( fabs(setpoint2) < torque_wheelsetpointmin )
+			{
+				setpoint2 = 0;
+			}
+
+			/* avoid sending very large values */
+			setpoint1 = Utils::clip(setpoint1, torque_wheelsetpointmax, -torque_wheelsetpointmax);
+			setpoint2 = Utils::clip(setpoint2, torque_wheelsetpointmax, -torque_wheelsetpointmax);
+
+			if (pivot_error < -error_margin)
+			{
+				// rotate anti-clockwise
+				setpoint1 += motor_torque_to_align_wheels;
+				setpoint2 += motor_torque_to_align_wheels;
+
+			}
+			else if (pivot_error > error_margin)
+			{
+				// rotate clockwise
+				setpoint1 -= motor_torque_to_align_wheels;
+				setpoint2 -= motor_torque_to_align_wheels;			
+			}
+
+			/* send calculated current values to EtherCAT */
+			rxdata.setpoint1 = setpoint1 / motor_const;
+			rxdata.setpoint2 = setpoint2 / motor_const;
 		}
-		else if (pivot_error > error_margin)
+		else
 		{
-			// rotate clockwise
-			setpoint1 -= motor_torque_value;
-			setpoint2 -= motor_torque_value;			
+			// std::cout << "Entered VCM" << std::endl;
+			/* calculate wheel target velocity */
+			velocityPlatformController.calculateWheelTargetVelocity(i, wheel_data->encoder_pivot,
+																	setpoint2, setpoint1);
+			setpoint1 *= -1; // because of inverted frame
+
+			/* avoid sending close to zero values */
+			if ( fabs(setpoint1) < wheelsetpointmin )
+			{
+				setpoint1 = 0;
+			}
+			if ( fabs(setpoint2) < wheelsetpointmin )
+			{
+				setpoint2 = 0;
+			}
+
+			/* avoid sending very large values */
+			setpoint1 = Utils::clip(setpoint1, wheelsetpointmax, -wheelsetpointmax);
+			setpoint2 = Utils::clip(setpoint2, wheelsetpointmax, -wheelsetpointmax);
+
+			/* send calculated target velocity values to EtherCAT */
+			rxdata.setpoint1 = setpoint1;
+			rxdata.setpoint2 = setpoint2;
+			// std::cout << "setpoint1: " << setpoint1 << "; setpoint2: " << setpoint2 << std::endl;		
 		}
 
-        /* send calculated current values to EtherCAT */
-		rxdata.setpoint1 = setpoint1 / motor_const;
-		rxdata.setpoint2 = setpoint2 / motor_const;
         rxpdo1_t* ecData = (rxpdo1_t*) ecx_slave[(*wheelConfigs)[i].ethercatNumber].outputs;
         *ecData = rxdata;					
     }

@@ -104,6 +104,7 @@ std::vector<double> prev_right_enc;
 double odomx = 0;
 double odomy = 0;
 double odoma = 0;
+ros::NodeHandle *n_ptr;
 
 void readWheelConfig(const ros::NodeHandle& nh) {
 	for (int i = 0; i < nWheels; i++) {
@@ -337,6 +338,14 @@ void joyCallback(const sensor_msgs::Joy::ConstPtr& joy) {
 	if (joy->buttons[5]) {
 		useJoy = true;
 
+		// set base_control_mode
+		std::string base_control_mode;
+		if (n_ptr->getParam("/base_control_mode", base_control_mode))
+		{
+			// std::cout << "Received base_control_mode: " << base_control_mode << std::endl;
+			driver->setControlMode(base_control_mode);
+		}
+
 		if (joy->axes[5] > 0.5 && joyScale < 1.0) {
 			joyScale = joyScale * 2.0;
 			if (joyScale > 1.0)
@@ -363,6 +372,15 @@ void joyCallback(const sensor_msgs::Joy::ConstPtr& joy) {
 }
 
 void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg) {
+
+	// set base_control_mode
+	std::string base_control_mode;
+	if (n_ptr->getParam("/base_control_mode", base_control_mode))
+	{
+		// std::cout << "Received base_control_mode: " << base_control_mode << std::endl;
+		driver->setControlMode(base_control_mode);
+	}
+
 	//if (!useJoy && !debugMode)
 	if (!useJoy)
 		driver->setTargetVelocity(msg->linear.x, msg->linear.y, msg->angular.z);
@@ -421,6 +439,7 @@ int main (int argc, char** argv)
 {
 	ros::init (argc, argv, "platform_driver");
 	ros::NodeHandle nh("~");
+	n_ptr = &nh;
 	
 	nh.getParam("num_wheels", nWheels);
 	
@@ -542,7 +561,7 @@ int main (int argc, char** argv)
 	errorPublisher = nh.advertise<std_msgs::Int32>("error", 10);
 	statusPublisher = nh.advertise<std_msgs::Int32>("status", 10);
 	ros::Subscriber joySubscriber = nh.subscribe("/joy", 1000, joyCallback);
-	ros::Subscriber cmdVelSubscriber = nh.subscribe("/cmd_vel", 1000, cmdVelCallback);
+	ros::Subscriber cmdVelSubscriber = nh.subscribe("/cmd_vel", 1000, &cmdVelCallback);
 	ros::Subscriber resetSubscriber = nh.subscribe("reset", 1, resetCallback);
 //	ros::Subscriber currentMaxSubscriber = nh.subscribe("current_max", 1, currentMaxCallback);
 	odom_broadcaster = new tf::TransformBroadcaster();

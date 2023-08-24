@@ -111,6 +111,7 @@ public:
 	void setTargetVelocity(double vx, double vy, double va);
 	void setMeasuredVelocity(double &vx, double &vy, double &va);
 	void setPlatformDampingParameters(double *damping_parameters);
+	void setControlMode(std::string &base_control_mode);
 	void setWheelDistance(double x);
 	void setWheelDiameter(double x);
 	void setCurrentStop(double x);
@@ -213,6 +214,7 @@ protected:
 
 	double measured_platform_velocity[3];
 	double platform_damping_parameters[3];
+	std::string platform_control_mode = "VELOCITY_CONTROL";
 
 	double maxvlin;
 	double maxva;
