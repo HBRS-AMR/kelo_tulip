@@ -480,8 +480,7 @@ int main (int argc, char** argv)
     int firstWheel = 0;
 
 	driver = new kelo::PlatformDriver(device, modules, &wheelConfigs, &wheelData, firstWheel, nWheelsMaster);
-	driver->setPlatformDampingParameters(damping_parameters);
-	
+
 	wheelIndex += nWheelsMaster;
 
 	// set driver control parameters		
@@ -540,6 +539,7 @@ int main (int argc, char** argv)
 	nh.getParam("platform_Kd_x", damping_parameters[0]);
 	nh.getParam("platform_Kd_y", damping_parameters[1]);
 	nh.getParam("platform_Kd_a", damping_parameters[2]);
+	driver->setPlatformDampingParameters(damping_parameters);
 		
 	// initialize Ethercat
 	while (!driver->initEthercat()) {
